@@ -1,74 +1,61 @@
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Clear-Host
+Write-Host @"
+ ███╗   ███╗███████╗ ██████╗ ██╗    ██╗
+ ████╗ ████║██╔════╝██╔═══██╗██║    ██║
+ ██╔████╔██║█████╗  ██║   ██║██║ █╗ ██║
+ ██║╚██╔╝██║██╔══╝  ██║   ██║██║███╗██║
+ ██║ ╚═╝ ██║███████╗╚██████╔╝╚███╔███╔╝
+ ╚═╝     ╚═╝╚══════╝ ╚═════╝  ╚══╝╚══╝
+███████╗██╗██╗     ███████╗██╗     ███████╗███████╗███████╗
+██╔════╝██║██║     ██╔════╝██║     ██╔════╝╚══███╔╝██╔════╝
+█████╗  ██║██║     █████╗  ██║     █████╗    ███╔╝ ███████╗
+██╔══╝  ██║██║     ██╔══╝  ██║     ██╔══╝   ███╔╝  ╚════██║
+██║     ██║███████╗███████╗███████╗███████╗███████╗███████║
+╚═╝     ╚═╝╚══════╝╚══════╝╚══════╝╚══════╝╚══════╝╚══════╝
+███████╗██╗██╗     ███████╗██╗     ███████╗███████╗███████╗
+██╔════╝██║██║     ██╔════╝██║     ██╔════╝╚══███╔╝██╔════╝
+█████╗  ██║██║     █████╗  ██║     █████╗    ███╔╝ ███████╗
+██╔══╝  ██║██║     ██╔══╝  ██║     ██╔══╝   ███╔╝  ╚════██║
+██║     ██║███████╗███████╗███████╗███████╗███████╗███████║
+╚═╝     ╚═╝╚══════╝╚══════╝╚══════╝╚══════╝╚══════╝╚══════╝
+ ██████╗██╗  ██╗███████╗ ██████╗██╗  ██╗
+██╔════╝██║  ██║██╔════╝██╔════╝██║ ██╔╝
+██║     ███████║█████╗  ██║     █████╔╝
+██║     ██╔══██║██╔══╝  ██║     ██╔═██╗
+╚██████╗██║  ██║███████╗╚██████╗██║  ██╗
+ ╚═════╝╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝  ╚═╝
+"@ -ForegroundColor Magenta
 
-$Banner = @"
-
-  ███╗   ███╗███████╗ ██████╗ ██╗    ██╗
-  ████╗ ████║██╔════╝██╔═══██╗██║    ██║
-  ██╔████╔██║█████╗  ██║   ██║██║ █╗ ██║
-  ██║╚██╔╝██║██╔══╝  ██║   ██║██║███╗██║
-  ██║ ╚═╝ ██║███████╗╚██████╔╝╚███╔███╔╝
-  ╚═╝     ╚═╝╚══════╝ ╚═════╝  ╚══╝╚══╝
-
-  ███████╗██╗██╗     ███████╗██╗     ███████╗███████╗███████╗
-  ██╔════╝██║██║     ██╔════╝██║     ██╔════╝╚══███╔╝██╔════╝
-  █████╗  ██║██║     █████╗  ██║     █████╗    ███╔╝ ███████╗
-  ██╔══╝  ██║██║     ██╔══╝  ██║     ██╔══╝   ███╔╝  ╚════██║
-  ██║     ██║███████╗███████╗███████╗███████╗███████╗███████║
-  ╚═╝     ╚═╝╚══════╝╚══════╝╚══════╝╚══════╝╚══════╝╚══════╝
-
-  ██████╗  ██████╗ ██╗    ██╗███╗   ██╗██╗      ██████╗  █████╗ ███████╗
-  ██╔══██╗██╔═══██╗██║    ██║████╗  ██║██║     ██╔═══██╗██╔══██╗██╔════╝
-  ██║  ██║██║   ██║██║ █╗ ██║██╔██╗ ██║██║     ██║   ██║███████║█████╗
-  ██║  ██║██║   ██║██║███╗██║██║╚██╗██║██║     ██║   ██║██╔══██║██╔══╝
-  ██████╔╝╚██████╔╝╚███╔███╔╝██║ ╚████║███████╗╚██████╔╝██║  ██║███████╗
-  ╚═════╝  ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
-
-                         \    /\
-                          )  ( ')
-                         (  /  )
-                          \(__)|
-
-"@
-
-Write-Host $Banner -ForegroundColor Cyan
+Write-Host "                          Meow Fileless Checker" -ForegroundColor Cyan
+Write-Host "                          Made with love by MeowTonyNoh<3" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "                Made with " -ForegroundColor Gray -NoNewline
-Write-Host "♥ " -ForegroundColor Red -NoNewline
-Write-Host "by " -ForegroundColor Gray -NoNewline
-Write-Host "MeowTonynoh" -ForegroundColor Cyan
-Write-Host ""
-Write-Host ("━" * 76) -ForegroundColor DarkCyan
-Write-Host
 
-# Check for Administrator privileges
-$isAdmin = [System.Security.Principal.WindowsPrincipal]::new([System.Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
-    Write-Host "`n╔══════════════════════════════════════════════════╗" -ForegroundColor Red
-    Write-Host "║           ADMINISTRATOR PRIVILEGES REQUIRED       ║" -ForegroundColor Red
-    Write-Host "║     Please run this script as Administrator!      ║" -ForegroundColor Red
-    Write-Host "╚══════════════════════════════════════════════════╝" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Press any key to exit..." -ForegroundColor Gray
-    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-    exit
+$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "This script requires Administrator privileges." -ForegroundColor Yellow
+    Write-Host "Restarting as Administrator" -ForegroundColor Yellow
+    
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = "PowerShell"
+    $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`""
+    $psi.Verb = "RunAs"
+    
+    try {
+        [System.Diagnostics.Process]::Start($psi) | Out-Null
+        exit
+    }
+    catch {
+        Write-Host "no admin" -ForegroundColor Red
+    }
 }
 
-# Download directory
 $DownloadPath = "C:\MeowTools"
 if (!(Test-Path $DownloadPath)) {
     New-Item -ItemType Directory -Path $DownloadPath -Force | Out-Null
 }
 
-Write-Host "📁 Download directory: " -ForegroundColor Cyan -NoNewline
-Write-Host "$DownloadPath" -ForegroundColor White
-Write-Host ""
-
-# Windows Defender Exclusion
 function Add-DefenderExclusion {
-    Write-Host "🛡️  Setting up antivirus exclusion..." -ForegroundColor Cyan
-    Write-Host "   Adding Windows Defender exclusion for " -NoNewline
-    Write-Host "$DownloadPath" -ForegroundColor White -NoNewline
+    Write-Host "`nSetting up antivirus exclusion" -ForegroundColor Cyan
+    Write-Host "Adding Windows Defender exclusion for $DownloadPath" -NoNewline
     
     $success = $false
     
@@ -78,12 +65,12 @@ function Add-DefenderExclusion {
             if ($existingExclusions -notcontains $DownloadPath) {
                 Add-MpPreference -ExclusionPath $DownloadPath -ErrorAction Stop
             }
-            Write-Host " ✓" -ForegroundColor Green
+            Write-Host " Success" -ForegroundColor Green
             $success = $true
         }
     }
     catch {
-        # Try alternative methods
+      
     }
     
     if (-not $success) {
@@ -94,36 +81,51 @@ function Add-DefenderExclusion {
                 if (-not $existingValue) {
                     New-ItemProperty -Path $regPath -Name $DownloadPath -Value 0 -PropertyType DWORD -Force -ErrorAction Stop | Out-Null
                 }
-                Write-Host " ✓" -ForegroundColor Green
+                Write-Host " Success" -ForegroundColor Green
                 $success = $true
             }
         }
         catch {
-            # Continue
+           
         }
     }
     
     if (-not $success) {
-        Write-Host " ✗" -ForegroundColor Red
-        Write-Host "   Could not add automatic antivirus exclusion" -ForegroundColor Yellow
-        Write-Host "   You might be using 3rd party antivirus" -ForegroundColor Yellow
+        try {
+            $namespace = "root\Microsoft\Windows\Defender"
+            if (Get-WmiObject -Namespace $namespace -List -ErrorAction SilentlyContinue) {
+                $defender = Get-WmiObject -Namespace $namespace -Class "MSFT_MpPreference" -ErrorAction Stop
+                $defender.AddExclusionPath($DownloadPath)
+                Write-Host " Success" -ForegroundColor Green
+                $success = $true
+            }
+        }
+        catch {
+           
+        }
     }
     
-    Write-Host ""
+    if (-not $success) {
+        Write-Host " Failed" -ForegroundColor Red
+    }
+    
     return $success
 }
 
-Add-DefenderExclusion
+$exclusionAdded = Add-DefenderExclusion
 
-# Download function
+if (-not $exclusionAdded) {
+    Write-Host "`nCould not add automatic antivirus exclusion, you are prolly using some 3rd party av." -ForegroundColor Yellow
+    Write-Host "`nContinuing with downloads (some might be deleted)" -ForegroundColor Yellow
+    Start-Sleep -Seconds 3
+}
+
 function Download-File {
     param([string]$Url, [string]$FileName, [string]$ToolName)
     
     try {
         $outputPath = Join-Path $DownloadPath $FileName
-        Write-Host "  ⬇️  Downloading " -NoNewline
-        Write-Host "$ToolName" -ForegroundColor White -NoNewline
-        
+        Write-Host "  Downloading $ToolName" -NoNewline
         $ProgressPreference = 'SilentlyContinue'
         Invoke-WebRequest -Uri $Url -OutFile $outputPath -UserAgent "PowerShell" -UseBasicParsing | Out-Null
         
@@ -132,13 +134,11 @@ function Download-File {
             Expand-Archive -Path $outputPath -DestinationPath $extractPath -Force | Out-Null
             Remove-Item $outputPath -Force | Out-Null
         }
-        
-        Write-Host " ✓" -ForegroundColor Green
+        Write-Host " Done" -ForegroundColor Green
         return $true
     }
     catch {
-        Write-Host " ✗" -ForegroundColor Red
-        Write-Host "     Error: $($_.Exception.Message)" -ForegroundColor DarkGray
+        Write-Host " Failed" -ForegroundColor Red
         return $false
     }
     finally {
@@ -146,8 +146,22 @@ function Download-File {
     }
 }
 
-# Tools to download
-$tools = @(
+function Download-Tools {
+    param([array]$Tools, [string]$CategoryName)
+    
+    $successCount = 0
+    
+    Write-Host "`nDownloading $CategoryName tools" -ForegroundColor Cyan
+    foreach ($tool in $Tools) {
+        if (Download-File -Url $tool.Url -FileName $tool.File -ToolName $tool.Name) {
+            $successCount++
+        }
+    }
+    
+    Write-Host ($CategoryName + ": " + $successCount + "/" + $Tools.Count + " tools downloaded successfully") -ForegroundColor Cyan
+}
+
+$forensicTools = @(
     @{ Name="bstrings"; Url="https://download.ericzimmermanstools.com/net9/bstrings.zip"; File="bstrings.zip" },
     @{ Name="FTK Imager"; Url="https://d1uxzfveuy41n0.cloudfront.net/AccessData_FTK_Imager_3.1.1.exe"; File="FTK_Imager_3.1.1.exe" },
     @{ Name="FullEventLogView"; Url="https://www.nirsoft.net/utils/fulleventlogview-x64.zip"; File="fulleventlogview-x64.zip" },
@@ -159,36 +173,14 @@ $tools = @(
     @{ Name="BinText"; Url="https://download1511.mediafire.com/6rq5ggzr3rqgj0txqMBe5qYQVRp-LyUYQGdOCcxVG2SqFPIRk3GkMo7r3T9T5k8L7LvO_d8KhZlqcYz8QwWwHnWAC-xzJDQPzUvl_jElO_jNBpjF-WM7CgYKAH6kBQGeBbLBlrMFd_BhpT1-v26WsHCsjpf8NJ-S5yoXQOYKqLRr/yfvhfmyf08yd7k7/BinText.zip"; File="BinText.zip" }
 )
 
-Write-Host "🔧 DOWNLOADING FORENSIC TOOLS" -ForegroundColor Cyan
-Write-Host ("─" * 76) -ForegroundColor DarkGray
-Write-Host ""
+Download-Tools -Tools $forensicTools -CategoryName "Forensic"
 
-$successCount = 0
-foreach ($tool in $tools) {
-    if (Download-File -Url $tool.Url -FileName $tool.File -ToolName $tool.Name) {
-        $successCount++
-    }
-}
-
-Write-Host ""
-Write-Host ("─" * 76) -ForegroundColor DarkGray
-Write-Host "✅ Downloaded " -NoNewline -ForegroundColor Green
-Write-Host "$successCount/$($tools.Count) " -ForegroundColor White -NoNewline
-Write-Host "tools successfully" -ForegroundColor Green
-Write-Host ""
-
-# Cool Checker Section
-Write-Host ("━" * 76) -ForegroundColor Blue
-Write-Host ""
-Write-Host "🔍 SYSTEM INTEGRITY CHECKER" -ForegroundColor Cyan
-Write-Host ""
-Write-Host ("━" * 76) -ForegroundColor Blue
-Write-Host ""
+Write-Host "`n================================================" -ForegroundColor Cyan
+Write-Host "           MEOW FILELESS CHECKER STARTING        " -ForegroundColor Cyan
+Write-Host "================================================`n" -ForegroundColor Cyan
 
 # Console Host History
-Write-Host "📝 CONSOLE HOST HISTORY" -ForegroundColor Cyan
-Write-Host ("─" * 76) -ForegroundColor DarkGray
-
+Write-Host "CONSOLE HOST HISTORY" -ForegroundColor Cyan
 $consoleHistoryPath = "$env:USERPROFILE\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadline\ConsoleHost_history.txt"
 
 if (Test-Path $consoleHistoryPath) {
@@ -201,8 +193,7 @@ if (Test-Path $consoleHistoryPath) {
         Write-Host "  Attributes: " -NoNewline -ForegroundColor White
         Write-Host $attributes -ForegroundColor Yellow
     } else {
-        Write-Host "  Attributes: " -NoNewline -ForegroundColor White
-        Write-Host "Normal" -ForegroundColor Green
+        Write-Host "  Attributes: Normal" -ForegroundColor Green
     }
     
     $fileSize = $historyFile.Length
@@ -210,23 +201,21 @@ if (Test-Path $consoleHistoryPath) {
     Write-Host "$([math]::Round($fileSize/1024, 2)) KB" -ForegroundColor Yellow
 } else {
     Write-Host "  File not found" -ForegroundColor Yellow
-    Write-Host "  Note: PowerShell history may be disabled or never used" -ForegroundColor Gray
 }
 
 Write-Host ""
 
 # Event Logs
-Write-Host "📋 EVENT LOGS" -ForegroundColor Cyan
-Write-Host ("─" * 76) -ForegroundColor DarkGray
+Write-Host "EVENT LOGS" -ForegroundColor Cyan
 
 function Check-EventLog {
     param ($logName, $eventID, $message)
     $event = Get-WinEvent -LogName $logName -FilterXPath "*[System[EventID=$eventID]]" -MaxEvents 1 -ErrorAction SilentlyContinue
     if ($event) {
         Write-Host "  $message at: " -NoNewline -ForegroundColor White
-        Write-Host $event.TimeCreated.ToString("MM/dd HH:mm:ss") -ForegroundColor Yellow
+        Write-Host $event.TimeCreated.ToString("MM/dd HH:mm") -ForegroundColor Yellow
     } else {
-        Write-Host "  $message " -NoNewline -ForegroundColor White
+        Write-Host "  $message - " -NoNewline -ForegroundColor White
         Write-Host "No records found" -ForegroundColor Green
     }
 }
@@ -236,9 +225,9 @@ function Check-RecentEventLog {
     $event = Get-WinEvent -LogName $logName -FilterXPath "*[System[EventID=$($eventIDs -join ' or EventID=')]]" -MaxEvents 1 -ErrorAction SilentlyContinue
     if ($event) {
         Write-Host "  $message (ID: $($event.Id)) at: " -NoNewline -ForegroundColor White
-        Write-Host $event.TimeCreated.ToString("MM/dd HH:mm:ss") -ForegroundColor Yellow
+        Write-Host $event.TimeCreated.ToString("MM/dd HH:mm") -ForegroundColor Yellow
     } else {
-        Write-Host "  $message " -NoNewline -ForegroundColor White
+        Write-Host "  $message - " -NoNewline -ForegroundColor White
         Write-Host "No records found" -ForegroundColor Green
     }
 }
@@ -252,8 +241,7 @@ Check-EventLog "System" 6005 "Event Log Service started"
 Write-Host ""
 
 # Registry
-Write-Host "📂 REGISTRY" -ForegroundColor Cyan
-Write-Host ("─" * 76) -ForegroundColor DarkGray
+Write-Host "REGISTRY" -ForegroundColor Cyan
 
 $settings = @(
     @{ Name = "CMD"; Path = "HKCU:\Software\Policies\Microsoft\Windows\System"; Key = "DisableCMD"; Warning = "Disabled"; Safe = "Available" },
@@ -275,8 +263,7 @@ foreach ($s in $settings) {
 Write-Host ""
 
 # Service Status
-Write-Host "⚙️  SERVICE STATUS" -ForegroundColor Cyan
-Write-Host ("─" * 76) -ForegroundColor DarkGray
+Write-Host "SERVICE STATUS" -ForegroundColor Cyan
 
 $services = @(
     @{Name = "EventLog"; DisplayName = "Windows Event Log"}
@@ -290,9 +277,9 @@ foreach ($svc in $services) {
             if ($displayName.Length -gt 40) {
                 $displayName = $displayName.Substring(0, 37) + "..."
             }
-            Write-Host "  " -NoNewline
+            Write-Host " " -NoNewline
             Write-Host "$($svc.Name)" -ForegroundColor Green -NoNewline
-            Write-Host " " * (13 - $svc.Name.Length) -NoNewline
+            Write-Host (" " * (13 - $svc.Name.Length)) -NoNewline
             Write-Host "$displayName" -ForegroundColor White -NoNewline
             
             try {
@@ -300,7 +287,7 @@ foreach ($svc in $services) {
                 if ($process.ProcessId -gt 0) {
                     $proc = Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
                     if ($proc) {
-                        Write-Host " | " -NoNewline -ForegroundColor Gray
+                        Write-Host " | " -NoNewline
                         Write-Host $proc.StartTime.ToString("HH:mm:ss") -ForegroundColor Yellow
                     } else {
                         Write-Host " | N/A" -ForegroundColor Yellow
@@ -321,28 +308,5 @@ foreach ($svc in $services) {
     }
 }
 
-Write-Host ""
-Write-Host ("━" * 76) -ForegroundColor Blue
-Write-Host ""
-Write-Host "  ✨ Download and check complete! Thanks for using Meow Fileless Downloader 🐱" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "  👤 Created by: " -ForegroundColor White -NoNewline
-Write-Host "🌟 " -ForegroundColor Cyan -NoNewline
-Write-Host "Tonynoh" -ForegroundColor Cyan
-Write-Host "  📱 My Socials: " -ForegroundColor White -NoNewline
-Write-Host "💬 " -ForegroundColor Blue -NoNewline
-Write-Host "Discord  : " -ForegroundColor Blue -NoNewline
-Write-Host "tonyboy90_" -ForegroundColor Blue
-Write-Host "                 " -NoNewline
-Write-Host "🔗 " -ForegroundColor DarkGray -NoNewline
-Write-Host "GitHub   : " -ForegroundColor DarkGray -NoNewline
-Write-Host "https://github.com/MeowTonynoh" -ForegroundColor DarkGray
-Write-Host "                 " -NoNewline
-Write-Host "🎥 " -ForegroundColor Red -NoNewline
-Write-Host "YouTube  : " -ForegroundColor Red -NoNewline
-Write-Host "tonynoh-07" -ForegroundColor Red
-Write-Host ""
-Write-Host ("━" * 76) -ForegroundColor Blue
-Write-Host ""
-Write-Host "Press any key to exit..." -ForegroundColor DarkGray
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+Write-Host "`nHit up @MeowTonyNoh if u got ideas for tools to add" -ForegroundColor Cyan
+Write-Host "Downloads are located in: $DownloadPath" -ForegroundColor Cyan
