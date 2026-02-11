@@ -48,7 +48,7 @@ if (!(Test-Path $DownloadPath)) {
 
 function Add-DefenderExclusion {
     Write-Host "`n[*] Setting up antivirus exclusion..." -ForegroundColor Cyan
-    Write-Host "[*] Adding Windows Defender exclusion for $DownloadPath" -NoNewline
+    Write-Host "[*] Adding Windows Defender exclusion for C:\MeowTools" -NoNewline
     $success = $false
     try {
         if (Get-Command Get-MpPreference -ErrorAction SilentlyContinue) {
@@ -217,10 +217,10 @@ $otherTools = @(
 )
 
 Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
-Write-Host "              Meow Fileless Downloader v2.0                " -ForegroundColor Cyan
-Write-Host "              Tool drop folder : $DownloadPath             " -ForegroundColor DarkCyan
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
+Write-Host "══════════════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
+Write-Host "              Meow Fileless Downloader v3.0                                   " -ForegroundColor Cyan
+Write-Host "              Tool drop folder : $DownloadPath                                " -ForegroundColor DarkCyan
+Write-Host "══════════════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
 Write-Host ""
 
 $installAllResponse = Read-Host "Download ALL tool categories? (Y/N)"
@@ -270,8 +270,161 @@ if ($installAll) {
 }
 
 Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
+Write-Host "══════════════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
 Write-Host ""
-Write-Host "[+] All done! Dm Me On Discord @tonyboy90_ if you got some shit to add." -ForegroundColor White
-Write-Host "[+] Tools are located in: $DownloadPath" -ForegroundColor Cyan
+Write-Host "[+] All done! Tools are located in: $DownloadPath" -ForegroundColor Cyan
+Write-Host ""
+
+# ════════════════════════════════════════════════════════════════════════════════
+# FILELESS CHECKER
+# ════════════════════════════════════════════════════════════════════════════════
+
+$runChecker = Read-Host "Run FileLess System Checker? (Y/N)"
+if ($runChecker -match '^[Yy]') {
+    Write-Host ""
+    Write-Host "══════════════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
+    Write-Host "                         FILELESS SYSTEM CHECKER                              " -ForegroundColor Magenta
+    Write-Host "══════════════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
+    Write-Host ""
+
+    # REGISTRY
+    Write-Host "REGISTRY" -ForegroundColor Cyan
+    
+    $psLogging = Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" -Name "EnableScriptBlockLogging" -ErrorAction SilentlyContinue
+    Write-Host "  PowerShell Logging: " -NoNewline -ForegroundColor White
+    if ($psLogging -and $psLogging.EnableScriptBlockLogging -eq 1) {
+        Write-Host "Enabled" -ForegroundColor Green
+    } else {
+        Write-Host "Disabled" -ForegroundColor Red
+    }
+
+    $prefetch = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters" -Name "EnablePrefetcher" -ErrorAction SilentlyContinue
+    Write-Host "  Prefetch Enabled: " -NoNewline -ForegroundColor White
+    if ($prefetch -and $prefetch.EnablePrefetcher -ne 0) {
+        Write-Host "Enabled" -ForegroundColor Green
+    } else {
+        Write-Host "Disabled" -ForegroundColor Red
+    }
+
+    # USN JOURNAL / EVENT LOGS
+    Write-Host "`nUSN JOURNAL" -ForegroundColor Cyan
+    
+    $usnEvent = Get-WinEvent -LogName "Application" -FilterXPath "*[System[EventID=3079]]" -MaxEvents 1 -ErrorAction SilentlyContinue
+    if ($usnEvent) {
+        Write-Host "  USN Journal cleared at: " -NoNewline -ForegroundColor White
+        Write-Host $usnEvent.TimeCreated.ToString("MM/dd HH:mm") -ForegroundColor Yellow
+    } else {
+        Write-Host "  USN Journal cleared at: No records found" -ForegroundColor Green
+    }
+
+    $clearEvent = Get-WinEvent -LogName "System" -FilterXPath "*[System[EventID=104 or EventID=1102]]" -MaxEvents 1 -ErrorAction SilentlyContinue
+    if ($clearEvent) {
+        Write-Host "  Event Logs cleared (ID: $($clearEvent.Id)) at: " -NoNewline -ForegroundColor White
+        Write-Host $clearEvent.TimeCreated.ToString("MM/dd HH:mm") -ForegroundColor Yellow
+    } else {
+        Write-Host "  Event Logs cleared: No records found" -ForegroundColor Green
+    }
+
+    $serviceStartEvent = Get-WinEvent -LogName "System" -FilterXPath "*[System[EventID=6005]]" -MaxEvents 1 -ErrorAction SilentlyContinue
+    if ($serviceStartEvent) {
+        Write-Host "  Event Log Service started at: " -NoNewline -ForegroundColor White
+        Write-Host $serviceStartEvent.TimeCreated.ToString("MM/dd HH:mm") -ForegroundColor Yellow
+    } else {
+        Write-Host "  Event Log Service started at: No records found" -ForegroundColor Green
+    }
+
+    # CONSOLE HOST HISTORY
+    Write-Host "`nCONSOLE HOST HISTORY" -ForegroundColor Cyan
+    
+    $consoleHistoryPath = "$env:USERPROFILE\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadline\ConsoleHost_history.txt"
+    
+    if (Test-Path $consoleHistoryPath) {
+        $historyFile = Get-Item -Path $consoleHistoryPath -Force
+        Write-Host "  Last Modified: " -NoNewline -ForegroundColor White
+        Write-Host $historyFile.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss") -ForegroundColor Yellow
+        
+        $attributes = $historyFile.Attributes
+        Write-Host "  Attributes: " -NoNewline -ForegroundColor White
+        if ($attributes -eq "Archive") {
+            Write-Host "Normal" -ForegroundColor Green
+        } else {
+            Write-Host $attributes -ForegroundColor Yellow
+        }
+        
+        $fileSize = $historyFile.Length
+        Write-Host "  File Size: " -NoNewline -ForegroundColor White
+        Write-Host "$([math]::Round($fileSize/1024, 2)) KB" -ForegroundColor Yellow
+    } else {
+        Write-Host "  File not found: $consoleHistoryPath" -ForegroundColor Yellow
+        Write-Host "  Note: PowerShell history may be disabled or never used" -ForegroundColor Gray
+    }
+
+    # SUSPICIOUS POWERSHELL COMMANDS
+    Write-Host "`nSUSPICIOUS POWERSHELL COMMANDS" -ForegroundColor Cyan
+    
+    $suspiciousPatterns = @(
+        "invoke-", "iex", "invoke-expression", "downloadstring",
+        "downloadfile", "webclient", "bits", "bitstransfer",
+        "curl", "wget", "powershell -enc", "frombase64string",
+        "new-object", "start-process", "invoke-webrequest",
+        "invoke-restmethod"
+    )
+
+    try {
+        $bootTime = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime
+        
+        $suspiciousCommands = @()
+        $channels = @("Windows PowerShell", "Microsoft-Windows-PowerShell/Operational")
+        
+        foreach ($channel in $channels) {
+            try {
+                $events = Get-WinEvent -LogName $channel -ErrorAction SilentlyContinue | 
+                    Where-Object { $_.TimeCreated -gt $bootTime } |
+                    Select-Object -First 100
+
+                foreach ($event in $events) {
+                    $message = $event.Message
+                    if ($message) {
+                        $lowerMessage = $message.ToLower()
+                        foreach ($pattern in $suspiciousPatterns) {
+                            if ($lowerMessage -match $pattern) {
+                                if ($suspiciousCommands -notcontains $message) {
+                                    $suspiciousCommands += $message
+                                }
+                                break
+                            }
+                        }
+                    }
+                }
+            } catch {}
+        }
+
+        if ($suspiciousCommands.Count -gt 0) {
+            Write-Host "  Found $($suspiciousCommands.Count) suspicious commands since last boot:" -ForegroundColor Yellow
+            $counter = 1
+            foreach ($cmd in $suspiciousCommands | Select-Object -First 5) {
+                Write-Host "`n  [#$counter] " -NoNewline -ForegroundColor White
+                $preview = $cmd.Substring(0, [Math]::Min(150, $cmd.Length))
+                if ($cmd.Length -gt 150) { $preview += "..." }
+                Write-Host $preview -ForegroundColor Gray
+                $counter++
+            }
+            if ($suspiciousCommands.Count -gt 5) {
+                Write-Host "`n  ... and $($suspiciousCommands.Count - 5) more" -ForegroundColor Gray
+            }
+        } else {
+            Write-Host "  No suspicious commands found since last boot" -ForegroundColor Green
+        }
+    } catch {
+        Write-Host "  Unable to check for suspicious commands" -ForegroundColor Red
+    }
+
+    Write-Host ""
+    Write-Host "══════════════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
+    Write-Host ""
+    Write-Host "[+] FileLess Checker Complete!" -ForegroundColor Green
+}
+
+Write-Host ""
+Write-Host "[+] Dm Me On Discord @tonyboy90_ if you got some shit to add." -ForegroundColor White
 Write-Host ""
