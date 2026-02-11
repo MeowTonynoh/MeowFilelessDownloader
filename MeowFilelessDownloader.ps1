@@ -1,6 +1,6 @@
 Write-Host @"
-███╗   ███╗███████╗ ██████╗ ██╗    ██╗         
-████╗ ████║██╔════╝██╔═══██╗██║    ██║       
+███╗   ███╗███████╗ ██████╗ ██╗    ██╗       
+████╗ ████║██╔════╝██╔═══██╗██║    ██║         
 ██╔████╔██║█████╗  ██║   ██║██║ █╗ ██║        
 ██║╚██╔╝██║██╔══╝  ██║   ██║██║███╗██║        
 ██║ ╚═╝ ██║███████╗╚██████╔╝╚███╔███╔╝    
@@ -113,11 +113,127 @@ $exclusionAdded = Add-DefenderExclusion
 
 if (-not $exclusionAdded) {
     Write-Host "`n[!] Could not add automatic antivirus exclusion." -ForegroundColor Yellow
-    Write-Host "[!] You might be running a 3rd party AV — some files could get deleted." -ForegroundColor Yellow
+    Write-Host "[!] You might be running a 3rd party AV -- some files could get deleted." -ForegroundColor Yellow
     Start-Sleep -Seconds 3
 }
 
-# ─── Download helpers ──────────────────────────────────────────────────────────
+# ─── Parallel download engine ──────────────────────────────────────────────────
+# Each file gets its own runspace (real OS thread via .NET ThreadPool).
+# A synchronized hashtable carries status updates back to the main thread.
+# System.Net.WebClient is used instead of Invoke-WebRequest for higher throughput.
+
+$DownloadScript = {
+    param($Url, $FileName, $ToolName, $DownloadPath, $StatusTable)
+
+    $outputPath = Join-Path $DownloadPath $FileName
+    $StatusTable[$ToolName] = "downloading"
+
+    try {
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add("User-Agent", "Mozilla/5.0")
+        $wc.DownloadFile($Url, $outputPath)
+
+        if ($FileName -like "*.zip") {
+            $extractPath = Join-Path $DownloadPath ($FileName -replace '\.zip$', '')
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($outputPath, $extractPath)
+            Remove-Item $outputPath -Force -ErrorAction SilentlyContinue
+        }
+
+        $StatusTable[$ToolName] = "done"
+    }
+    catch {
+        $StatusTable[$ToolName] = "failed"
+    }
+}
+
+function Download-Tools-Parallel {
+    param(
+        [array]$Tools,
+        [string]$CategoryName
+    )
+
+    Write-Host "`n[*] Downloading $CategoryName tools in parallel..." -ForegroundColor Cyan
+    Write-Host ""
+
+    # Shared thread-safe hashtable
+    $statusTable = [hashtable]::Synchronized(@{})
+    foreach ($tool in $Tools) {
+        $statusTable[$tool.Name] = "queued"
+    }
+
+    # One runspace per file, all start simultaneously
+    $maxThreads = [Math]::Min($Tools.Count, 16)
+    $pool       = [RunspaceFactory]::CreateRunspacePool(1, $maxThreads)
+    $pool.Open()
+
+    $runspaces = @()
+    foreach ($tool in $Tools) {
+        $ps = [PowerShell]::Create()
+        $ps.RunspacePool = $pool
+        [void]$ps.AddScript($DownloadScript)
+        [void]$ps.AddArgument($tool.Url)
+        [void]$ps.AddArgument($tool.File)
+        [void]$ps.AddArgument($tool.Name)
+        [void]$ps.AddArgument($DownloadPath)
+        [void]$ps.AddArgument($statusTable)
+
+        $runspaces += [PSCustomObject]@{
+            Pipe   = $ps
+            Handle = $ps.BeginInvoke()
+            Name   = $tool.Name
+        }
+    }
+
+    # ── Live progress display ──────────────────────────────────────────────────
+    $spinFrames = @("|", "/", "-", "\")
+    $spinIdx    = 0
+    $cursorTop  = [Console]::CursorTop
+
+    # Reserve lines for each tool
+    foreach ($r in $runspaces) { Write-Host "" }
+
+    do {
+        Start-Sleep -Milliseconds 100
+        $spin = $spinFrames[$spinIdx % 4]; $spinIdx++
+
+        $lineIdx = 0
+        foreach ($r in $runspaces) {
+            [Console]::SetCursorPosition(0, $cursorTop + $lineIdx)
+            $state = $statusTable[$r.Name]
+            $label = $r.Name.PadRight(28)
+
+            switch ($state) {
+                "queued"      { Write-Host ("  [ ] $label  waiting...   ").PadRight(60) -ForegroundColor DarkGray  }
+                "downloading" { Write-Host ("  $spin  $label  downloading...").PadRight(60) -ForegroundColor Yellow    }
+                "done"        { Write-Host ("  [+] $label  done         ").PadRight(60) -ForegroundColor Green     }
+                "failed"      { Write-Host ("  [X] $label  FAILED       ").PadRight(60) -ForegroundColor Red       }
+            }
+            $lineIdx++
+        }
+
+        $pending = @($statusTable.Values | Where-Object { $_ -eq "queued" -or $_ -eq "downloading" })
+
+    } while ($pending.Count -gt 0)
+
+    [Console]::SetCursorPosition(0, $cursorTop + $runspaces.Count)
+
+    # Clean up runspaces
+    foreach ($r in $runspaces) {
+        try { $r.Pipe.EndInvoke($r.Handle) } catch {}
+        $r.Pipe.Dispose()
+    }
+    $pool.Close()
+    $pool.Dispose()
+
+    $success = @($statusTable.Values | Where-Object { $_ -eq "done" }).Count
+    $total   = $Tools.Count
+    $color   = if ($success -eq $total) { "Green" } else { "Yellow" }
+    Write-Host ""
+    Write-Host "[$CategoryName] $success/$total downloaded successfully" -ForegroundColor $color
+}
+
+# Single sequential download (used for the optional .NET SDK)
 function Download-File {
     param(
         [string]$Url,
@@ -128,13 +244,16 @@ function Download-File {
     try {
         $outputPath = Join-Path $DownloadPath $FileName
         Write-Host "  [~] Downloading $ToolName..." -NoNewline
-        $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri $Url -OutFile $outputPath -UserAgent "Mozilla/5.0" -UseBasicParsing | Out-Null
+
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add("User-Agent", "Mozilla/5.0")
+        $wc.DownloadFile($Url, $outputPath)
 
         if ($FileName -like "*.zip") {
             $extractPath = Join-Path $DownloadPath ($FileName -replace '\.zip$', '')
-            Expand-Archive -Path $outputPath -DestinationPath $extractPath -Force | Out-Null
-            Remove-Item $outputPath -Force | Out-Null
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($outputPath, $extractPath)
+            Remove-Item $outputPath -Force -ErrorAction SilentlyContinue
         }
 
         Write-Host " [DONE]" -ForegroundColor Green
@@ -144,39 +263,17 @@ function Download-File {
         Write-Host " [FAILED]" -ForegroundColor Red
         return $false
     }
-    finally {
-        $ProgressPreference = 'Continue'
-    }
-}
-
-function Download-Tools {
-    param(
-        [array]$Tools,
-        [string]$CategoryName
-    )
-
-    $successCount = 0
-
-    Write-Host "`n[*] Downloading $CategoryName tools..." -ForegroundColor Cyan
-    foreach ($tool in $Tools) {
-        if (Download-File -Url $tool.Url -FileName $tool.File -ToolName $tool.Name) {
-            $successCount++
-        }
-    }
-
-    $color = if ($successCount -eq $Tools.Count) { "Green" } else { "Yellow" }
-    Write-Host ("[$CategoryName] $successCount/$($Tools.Count) tools downloaded successfully") -ForegroundColor $color
 }
 
 # ─── Tool definitions ──────────────────────────────────────────────────────────
 
 $zimmermanTools = @(
-    @{ Name = "bstrings";           Url = "https://download.ericzimmermanstools.com/net9/bstrings.zip";          File = "bstrings.zip" },
-    @{ Name = "TimelineExplorer";   Url = "https://download.ericzimmermanstools.com/net9/TimelineExplorer.zip";  File = "TimelineExplorer.zip" }
+    @{ Name = "bstrings";         Url = "https://download.ericzimmermanstools.com/net9/bstrings.zip";         File = "bstrings.zip" },
+    @{ Name = "TimelineExplorer"; Url = "https://download.ericzimmermanstools.com/net9/TimelineExplorer.zip"; File = "TimelineExplorer.zip" }
 )
 
 $nirsoftTools = @(
-    @{ Name = "FullEventLogView";   Url = "https://www.nirsoft.net/utils/fulleventlogview-x64.zip";              File = "fulleventlogview-x64.zip" }
+    @{ Name = "FullEventLogView"; Url = "https://www.nirsoft.net/utils/fulleventlogview-x64.zip"; File = "fulleventlogview-x64.zip" }
 )
 
 $spokwnTools = @(
@@ -184,31 +281,30 @@ $spokwnTools = @(
 )
 
 $otherTools = @(
-    @{ Name = "Everything Search";  Url = "https://www.voidtools.com/Everything-1.4.1.1032.x64-Setup.exe";       File = "Everything-1.4.1.1032.x64-Setup.exe" },
-    @{ Name = "Hayabusa";           Url = "https://github.com/Yamato-Security/hayabusa/releases/download/v3.8.0/hayabusa-3.8.0-win-x64.zip"; File = "hayabusa-3.8.0-win-x64.zip" },
-    @{ Name = "HxD Hex Editor";     Url = "https://mh-nexus.de/downloads/HxDSetupEN.zip";                        File = "HxDSetupEN.zip" },
-    @{ Name = "BinText";            Url = "https://web.archive.org/web/2024/https://www.mcafee.com/hk/downloads/free-tools/bintext.aspx"; File = "BinText.zip" },
-    @{ Name = "FTK Imager";         Url = "https://accessdata-ftk-imager.software.informer.com/3.1/";             File = "FTK_Imager_Setup.exe" }
+    @{ Name = "Everything Search"; Url = "https://www.voidtools.com/Everything-1.4.1.1032.x64-Setup.exe";                                   File = "Everything-1.4.1.1032.x64-Setup.exe" },
+    @{ Name = "Hayabusa";          Url = "https://github.com/Yamato-Security/hayabusa/releases/download/v3.8.0/hayabusa-3.8.0-win-x64.zip"; File = "hayabusa-3.8.0-win-x64.zip" },
+    @{ Name = "HxD Hex Editor";    Url = "https://mh-nexus.de/downloads/HxDSetupEN.zip";                                                     File = "HxDSetupEN.zip" },
+    @{ Name = "BinText";           Url = "https://web.archive.org/web/2024/https://www.mcafee.com/hk/downloads/free-tools/bintext.aspx";     File = "BinText.zip" },
+    @{ Name = "FTK Imager";        Url = "https://accessdata-ftk-imager.software.informer.com/3.1/";                                         File = "FTK_Imager_Setup.exe" }
 )
 
 # ─── Menu ──────────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
-Write-Host "             Meow Fileless Downloader v1.0              " -ForegroundColor Cyan
-Write-Host "             Tool drop folder: $DownloadPath            " -ForegroundColor DarkCyan
-Write-Host "════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
+Write-Host "              Meow Fileless Downloader v1.1                " -ForegroundColor Cyan
+Write-Host "              Tool drop folder : $DownloadPath             " -ForegroundColor DarkCyan
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
 Write-Host ""
 
 $installAllResponse = Read-Host "Download ALL tool categories? (Y/N)"
 $installAll = $installAllResponse -match '^[Yy]'
 
 if ($installAll) {
-    Write-Host "`n[+] Downloading all categories..." -ForegroundColor Green
+    Write-Host "`n[+] Launching all downloads simultaneously..." -ForegroundColor Green
 
-    Download-Tools -Tools $zimmermanTools  -CategoryName "Zimmerman's"
-    Download-Tools -Tools $nirsoftTools   -CategoryName "Nirsoft"
-    Download-Tools -Tools $spokwnTools    -CategoryName "Spokwn's"
-    Download-Tools -Tools $otherTools     -CategoryName "Other"
+    # Merge everything into one wave — maximum parallelism
+    $allTools = $zimmermanTools + $nirsoftTools + $spokwnTools + $otherTools
+    Download-Tools-Parallel -Tools $allTools -CategoryName "All"
 
     $runtimeResponse = Read-Host "`nInstall .NET 9 Runtime? (required for Zimmerman tools) (Y/N)"
     if ($runtimeResponse -match '^[Yy]') {
@@ -220,10 +316,32 @@ if ($installAll) {
 } else {
     Write-Host "`n[*] Select categories to download:" -ForegroundColor Yellow
 
+    $selected        = @()
+    $needDotNet      = $false
+
     $response = Read-Host "`nDownload Zimmerman's tools? (bstrings, TimelineExplorer) (Y/N)"
     if ($response -match '^[Yy]') {
-        Download-Tools -Tools $zimmermanTools -CategoryName "Zimmerman's"
+        $selected   += $zimmermanTools
+        $needDotNet  = $true
+    }
 
+    $response = Read-Host "`nDownload Nirsoft tools? (FullEventLogView) (Y/N)"
+    if ($response -match '^[Yy]') { $selected += $nirsoftTools }
+
+    $response = Read-Host "`nDownload Spokwn's tools? (KernelLiveDumpTool) (Y/N)"
+    if ($response -match '^[Yy]') { $selected += $spokwnTools }
+
+    $response = Read-Host "`nDownload other tools? (Everything, Hayabusa, HxD, BinText, FTK Imager) (Y/N)"
+    if ($response -match '^[Yy]') { $selected += $otherTools }
+
+    if ($selected.Count -gt 0) {
+        Write-Host "`n[+] Launching $($selected.Count) download(s) simultaneously..." -ForegroundColor Green
+        Download-Tools-Parallel -Tools $selected -CategoryName "Selected"
+    } else {
+        Write-Host "`n[!] Nothing selected. Bye!" -ForegroundColor Yellow
+    }
+
+    if ($needDotNet) {
         $runtimeResponse = Read-Host "`nInstall .NET 9 Runtime? (required for Zimmerman tools) (Y/N)"
         if ($runtimeResponse -match '^[Yy]') {
             Download-File -Url "https://builds.dotnet.microsoft.com/dotnet/Sdk/9.0.306/dotnet-sdk-9.0.306-win-x64.exe" `
@@ -231,26 +349,11 @@ if ($installAll) {
                           -ToolName ".NET 9 SDK"
         }
     }
-
-    $response = Read-Host "`nDownload Nirsoft tools? (FullEventLogView) (Y/N)"
-    if ($response -match '^[Yy]') {
-        Download-Tools -Tools $nirsoftTools -CategoryName "Nirsoft"
-    }
-
-    $response = Read-Host "`nDownload Spokwn's tools? (KernelLiveDumpTool) (Y/N)"
-    if ($response -match '^[Yy]') {
-        Download-Tools -Tools $spokwnTools -CategoryName "Spokwn's"
-    }
-
-    $response = Read-Host "`nDownload other tools? (Everything, Hayabusa, HxD, BinText, FTK Imager) (Y/N)"
-    if ($response -match '^[Yy]') {
-        Download-Tools -Tools $otherTools -CategoryName "Other"
-    }
 }
 
 # ─── Done ──────────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
 Write-Host ""
 Write-Host "[+] All done! Hit up @Tonynoh if you got ideas for tools to add." -ForegroundColor Magenta
 Write-Host "[+] Tools are located in: $DownloadPath" -ForegroundColor Cyan
