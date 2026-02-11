@@ -26,11 +26,9 @@ Write-Host @"
 "@ -ForegroundColor Yellow
 
 Write-Host ""
-Write-Host "                     Made with love by Tonynoh <3" -ForegroundColor Magenta
-Write-Host "                     v1.5 - FIXED by Claude" -ForegroundColor DarkGray
+Write-Host "                  Made with love by Tonynoh <3" -ForegroundColor Magenta
 Write-Host ""
 
-# ─── Admin check ───────────────────────────────────────────────────────────────
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "[!] This script requires Administrator privileges." -ForegroundColor Yellow
@@ -43,13 +41,11 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
     catch { Write-Host "[-] Could not elevate. Run as Administrator manually." -ForegroundColor Red }
 }
 
-# ─── Output folder ─────────────────────────────────────────────────────────────
 $DownloadPath = "C:\MeowTools"
 if (!(Test-Path $DownloadPath)) {
     New-Item -ItemType Directory -Path $DownloadPath -Force | Out-Null
 }
 
-# ─── Windows Defender exclusion ────────────────────────────────────────────────
 function Add-DefenderExclusion {
     Write-Host "`n[*] Setting up antivirus exclusion..." -ForegroundColor Cyan
     Write-Host "[*] Adding Windows Defender exclusion for $DownloadPath" -NoNewline
@@ -82,10 +78,6 @@ if (-not $exclusionAdded) {
     Start-Sleep -Seconds 2
 }
 
-# ─── Parallel download worker script ──────────────────────────────────────────
-# ✅ FIXED: Added 120-second timeout to prevent hanging
-# ✅ FIXED: Better error handling for large files
-
 $DownloadScript = {
     param($Url, $FileName, $ToolName, $Referer, $DownloadPath, $StatusTable)
 
@@ -93,7 +85,6 @@ $DownloadScript = {
     $StatusTable[$ToolName] = "downloading"
 
     try {
-        # Force TLS 1.2 — required for GitHub, Zimmerman CDN, etc.
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
         $headers = @{
@@ -103,17 +94,14 @@ $DownloadScript = {
 
         $ProgressPreference = 'SilentlyContinue'
         
-        # ✅ FIXED: Timeout increased to 120 seconds for large files like TimelineExplorer
         Invoke-WebRequest -Uri $Url -OutFile $outputPath -Headers $headers `
-            -UseBasicParsing -MaximumRedirection 10 -TimeoutSec 120 -ErrorAction Stop
+            -UseBasicParsing -MaximumRedirection 10 -TimeoutSec 180 -ErrorAction Stop
 
-        # Sanity check: reject HTML error pages disguised as files
         $size = (Get-Item $outputPath -ErrorAction SilentlyContinue).Length
-        if ($size -lt 1024) { throw "File too small ($size bytes) -- probably an error page" }
+        if ($size -lt 1024) { throw "File too small ($size bytes)" }
 
         if ($FileName -like "*.zip") {
             $extractPath = Join-Path $DownloadPath ($FileName -replace '\.zip$', '')
-            # Remove stale folder from previous failed attempts
             if (Test-Path $extractPath) { Remove-Item $extractPath -Recurse -Force -ErrorAction SilentlyContinue }
             Add-Type -AssemblyName System.IO.Compression.FileSystem
             [System.IO.Compression.ZipFile]::ExtractToDirectory($outputPath, $extractPath)
@@ -128,9 +116,6 @@ $DownloadScript = {
     }
 }
 
-# ─── Parallel download engine ──────────────────────────────────────────────────
-# ✅ FIXED: Reduced update frequency from 130ms to 500ms to stop cursor flicker
-
 function Download-Tools-Parallel {
     param([array]$Tools, [string]$CategoryName)
 
@@ -144,7 +129,7 @@ function Download-Tools-Parallel {
         $toolOrder += $tool.Name
     }
 
-    $pool = [RunspaceFactory]::CreateRunspacePool(1, [Math]::Min($Tools.Count, 8))
+    $pool = [RunspaceFactory]::CreateRunspacePool(1, 6)
     $pool.Open()
 
     $runspaces = @()
@@ -161,25 +146,21 @@ function Download-Tools-Parallel {
         $runspaces += [PSCustomObject]@{ Pipe = $ps; Handle = $ps.BeginInvoke(); Name = $tool.Name }
     }
 
-    # ✅ FIXED: Reduced refresh rate from 130ms to 500ms - MOLTO meno flickering!
     $ESC        = [char]27
     $spinFrames = @("|", "/", "-", "\")
     $spinIdx    = 0
     $n          = $toolOrder.Count
 
-    # Initial render
     foreach ($name in $toolOrder) {
         Write-Host ("  [ ] " + $name.PadRight(28) + "  waiting...").PadRight(68) -ForegroundColor DarkGray
     }
 
     do {
-        # ✅ FIXED: 500ms invece di 130ms - cursore molto più stabile!
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Milliseconds 600
 
         $spin = $spinFrames[$spinIdx % 4]
         $spinIdx++
 
-        # Move cursor back up to the first tool line (relative, scroll-safe)
         [Console]::Write("$ESC[${n}A")
 
         foreach ($name in $toolOrder) {
@@ -210,7 +191,6 @@ function Download-Tools-Parallel {
     Write-Host "[$CategoryName] $success/$($Tools.Count) downloaded successfully" -ForegroundColor $color
 }
 
-# Sequential download for the optional .NET SDK
 function Download-File {
     param([string]$Url, [string]$FileName, [string]$ToolName, [string]$Referer = "")
     try {
@@ -221,7 +201,7 @@ function Download-File {
         if ($Referer) { $headers["Referer"] = $Referer }
         $ProgressPreference = 'SilentlyContinue'
         Invoke-WebRequest -Uri $Url -OutFile $outputPath -Headers $headers `
-            -UseBasicParsing -MaximumRedirection 10 -TimeoutSec 120 -ErrorAction Stop
+            -UseBasicParsing -MaximumRedirection 10 -TimeoutSec 180 -ErrorAction Stop
         if ($FileName -like "*.zip") {
             $extractPath = Join-Path $DownloadPath ($FileName -replace '\.zip$', '')
             if (Test-Path $extractPath) { Remove-Item $extractPath -Recurse -Force }
@@ -238,12 +218,9 @@ function Download-File {
     }
 }
 
-# ─── Tool definitions ──────────────────────────────────────────────────────────
-# ✅ FIXED: Updated BinText and FTK Imager with working URLs
-
 $zimmermanTools = @(
-    @{ Name = "bstrings";         Url = "https://download.ericzimmermanstools.com/net9/bstrings.zip";         File = "bstrings.zip";         Referer = "https://ericzimmerman.github.io/" },
-    @{ Name = "TimelineExplorer"; Url = "https://download.ericzimmermanstools.com/net9/TimelineExplorer.zip"; File = "TimelineExplorer.zip"; Referer = "https://ericzimmerman.github.io/" }
+    @{ Name = "bstrings";         Url = "https://download.ericzimmermanstools.com/net9/bstrings.zip";         File = "bstrings.zip";         Referer = "" },
+    @{ Name = "TimelineExplorer"; Url = "https://download.ericzimmermanstools.com/net9/TimelineExplorer.zip"; File = "TimelineExplorer.zip"; Referer = "" }
 )
 
 $nirsoftTools = @(
@@ -255,23 +232,18 @@ $spokwnTools = @(
 )
 
 $otherTools = @(
-    @{ Name = "Everything Search"; Url = "https://www.voidtools.com/Everything-1.4.1.1032.x64-Setup.exe"; File = "Everything-1.4.1.1032.x64-Setup.exe"; Referer = "https://www.voidtools.com/downloads/" },
+    @{ Name = "Everything Search"; Url = "https://www.voidtools.com/Everything-1.4.1.1032.x64-Setup.exe"; File = "Everything-1.4.1.1032.x64-Setup.exe"; Referer = "" },
     @{ Name = "Hayabusa";          Url = "https://github.com/Yamato-Security/hayabusa/releases/download/v3.8.0/hayabusa-3.8.0-win-x64.zip"; File = "hayabusa-3.8.0-win-x64.zip"; Referer = "" },
-    @{ Name = "HxD Hex Editor";    Url = "https://mh-nexus.de/downloads/HxDSetup.zip"; File = "HxDSetup.zip"; Referer = "https://mh-nexus.de/en/hxd/" },
-    # ✅ FIXED: BinText working alternative download (archive.org mirror)
-    @{ Name = "BinText";           Url = "https://web.archive.org/web/20231201000000id_/http://b2b-download.mcafee.com/products/tools/foundstone/bintext303.zip"; File = "bintext303.zip"; Referer = "" },
-    # ✅ FIXED: FTK Imager latest working download link
-    @{ Name = "FTK Imager";        Url = "https://d1kpmuwb7gvu1i.cloudfront.net/AccessData/files/installers/AccessData_FTK_Imager_3.1.1.exe"; File = "FTK_Imager_3.1.1.exe"; Referer = "https://www.exterro.com/" }
+    @{ Name = "HxD Hex Editor";    Url = "https://mh-nexus.de/downloads/HxDSetup.zip"; File = "HxDSetup.zip"; Referer = "" },
+    @{ Name = "BinText";           Url = "http://packetstormsecurity.com/files/download/23823/bintext.zip"; File = "bintext.zip"; Referer = "" },
+    @{ Name = "FTK Imager";        Url = "https://go.exterro.com/l/43312/2023-05-03/fc4b78"; File = "FTK_Imager_4.7.exe"; Referer = "" }
 )
 
-# ─── Menu ──────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
 Write-Host "              Meow Fileless Downloader v1.5                " -ForegroundColor Cyan
 Write-Host "              Tool drop folder : $DownloadPath             " -ForegroundColor DarkCyan
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
-Write-Host ""
-Write-Host " FIXES: Cursor flicker removed | Timeout added | All URLs working" -ForegroundColor Green
 Write-Host ""
 
 $installAllResponse = Read-Host "Download ALL tool categories? (Y/N)"
@@ -320,16 +292,9 @@ if ($installAll) {
     }
 }
 
-# ─── Done ──────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
 Write-Host ""
-Write-Host "[+] All done! Hit up @Tonynoh if you got ideas for tools to add." -ForegroundColor Magenta
+Write-Host "[+] All done! dm me on discord @tonybnoy90_ if you got ideas for some shit to add." -ForegroundColor Magenta
 Write-Host "[+] Tools are located in: $DownloadPath" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "[i] v1.5 - Bugs fixed by Claude:" -ForegroundColor DarkGray
-Write-Host "    • Cursor flicker eliminated (500ms refresh)" -ForegroundColor DarkGray
-Write-Host "    • Download timeout added (120 seconds)" -ForegroundColor DarkGray
-Write-Host "    • BinText & FTK Imager URLs fixed" -ForegroundColor DarkGray
-Write-Host "    • Parallel downloads capped at 8 max" -ForegroundColor DarkGray
 Write-Host ""
