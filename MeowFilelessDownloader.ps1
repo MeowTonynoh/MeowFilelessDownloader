@@ -213,7 +213,7 @@ $otherTools = @(
     @{ Name = "Everything Search"; Url = "https://www.voidtools.com/Everything-1.4.1.1032.x64-Setup.exe"; File = "Everything-1.4.1.1032.x64-Setup.exe"; Referer = "" },
     @{ Name = "Hayabusa";          Url = "https://github.com/Yamato-Security/hayabusa/releases/download/v3.8.0/hayabusa-3.8.0-win-x64.zip"; File = "hayabusa-3.8.0-win-x64.zip"; Referer = "" },
     @{ Name = "HxD Hex Editor";    Url = "https://mh-nexus.de/downloads/HxDSetup.zip"; File = "HxDSetup.zip"; Referer = "" },
-    @{ Name = "BinText";           Url = "https://bintext.software.informer.com/3.0/"; File = "bintext.zip"; Referer = "" }
+    @{ Name = "BinText";           Url = "https://www.portablefreeware.com/download.php?dd=2506"; File = "BinText.zip"; Referer = "https://www.portablefreeware.com/index.php?id=2506" }
 )
 
 Write-Host ""
@@ -275,4 +275,3 @@ Write-Host ""
 Write-Host "[+] All done! Dm Me On Discord @tonyboy90_ if you got some shit to add." -ForegroundColor White
 Write-Host "[+] Tools are located in: $DownloadPath" -ForegroundColor Cyan
 Write-Host ""
-
