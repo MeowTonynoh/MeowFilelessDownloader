@@ -1,8 +1,8 @@
 Write-Host @"
-███╗   ███╗███████╗ ██████╗ ██╗    ██╗       
-████╗ ████║██╔════╝██╔═══██╗██║    ██║         
+███╗   ███╗███████╗ ██████╗ ██╗    ██╗      
+████╗ ████║██╔════╝██╔═══██╗██║    ██║        
 ██╔████╔██║█████╗  ██║   ██║██║ █╗ ██║        
-██║╚██╔╝██║██╔══╝  ██║   ██║██║███╗██║        
+██║╚██╔╝██║██╔══╝  ██║   ██║██║███╗██║       
 ██║ ╚═╝ ██║███████╗╚██████╔╝╚███╔███╔╝    
 ╚═╝     ╚═╝╚══════╝ ╚═════╝  ╚══╝╚══╝    
 "@ -ForegroundColor Magenta
@@ -118,9 +118,9 @@ if (-not $exclusionAdded) {
 }
 
 # ─── Parallel download engine ──────────────────────────────────────────────────
-# Each file gets its own runspace (real OS thread via .NET ThreadPool).
-# A synchronized hashtable carries status updates back to the main thread.
-# System.Net.WebClient is used instead of Invoke-WebRequest for higher throughput.
+# Uses RunspacePool (real OS threads). A synchronized hashtable carries status
+# back to the main thread. The display loop only redraws a line when its state
+# actually changes, eliminating all cursor-jump flicker.
 
 $DownloadScript = {
     param($Url, $FileName, $ToolName, $DownloadPath, $StatusTable)
@@ -130,8 +130,13 @@ $DownloadScript = {
 
     try {
         $wc = New-Object System.Net.WebClient
-        $wc.Headers.Add("User-Agent", "Mozilla/5.0")
+        $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
         $wc.DownloadFile($Url, $outputPath)
+
+        # Validate we got a real file (not an HTML error page)
+        if ((Get-Item $outputPath -ErrorAction SilentlyContinue).Length -lt 1024) {
+            throw "Downloaded file is too small -- likely an error page"
+        }
 
         if ($FileName -like "*.zip") {
             $extractPath = Join-Path $DownloadPath ($FileName -replace '\.zip$', '')
@@ -143,6 +148,8 @@ $DownloadScript = {
         $StatusTable[$ToolName] = "done"
     }
     catch {
+        # Clean up partial/invalid file
+        if (Test-Path $outputPath) { Remove-Item $outputPath -Force -ErrorAction SilentlyContinue }
         $StatusTable[$ToolName] = "failed"
     }
 }
@@ -157,12 +164,17 @@ function Download-Tools-Parallel {
     Write-Host ""
 
     # Shared thread-safe hashtable
-    $statusTable = [hashtable]::Synchronized(@{})
+    $statusTable  = [hashtable]::Synchronized(@{})
+    $prevState    = @{}
+    $toolOrder    = @()
+
     foreach ($tool in $Tools) {
         $statusTable[$tool.Name] = "queued"
+        $prevState[$tool.Name]   = ""        # force first draw
+        $toolOrder += $tool.Name
     }
 
-    # One runspace per file, all start simultaneously
+    # Launch all runspaces simultaneously
     $maxThreads = [Math]::Min($Tools.Count, 16)
     $pool       = [RunspaceFactory]::CreateRunspacePool(1, $maxThreads)
     $pool.Open()
@@ -185,40 +197,65 @@ function Download-Tools-Parallel {
         }
     }
 
-    # ── Live progress display ──────────────────────────────────────────────────
-    $spinFrames = @("|", "/", "-", "\")
-    $spinIdx    = 0
-    $cursorTop  = [Console]::CursorTop
+    # ── Flicker-free live display ──────────────────────────────────────────────
+    # Each tool gets a fixed line. We record the cursor row for each tool on the
+    # first pass, then only jump back to that specific row when the state changes.
+    # This avoids the "whole block redraw" that causes visible flicker/jumping.
 
-    # Reserve lines for each tool
-    foreach ($r in $runspaces) { Write-Host "" }
+    $lineMap     = @{}   # tool name -> console row
+    $spinFrames  = @("|", "/", "-", "\")
+    $spinIdx     = 0
+
+    # Initial render — print every tool on its own line and record the row
+    foreach ($name in $toolOrder) {
+        $lineMap[$name] = [Console]::CursorTop
+        Write-Host ("  [ ] " + $name.PadRight(28) + "  waiting...").PadRight(65) -ForegroundColor DarkGray
+    }
 
     do {
-        Start-Sleep -Milliseconds 100
-        $spin = $spinFrames[$spinIdx % 4]; $spinIdx++
+        Start-Sleep -Milliseconds 120
+        $spin    = $spinFrames[$spinIdx % 4]; $spinIdx++
+        $savRow  = [Console]::CursorTop
+        $savCol  = [Console]::CursorLeft
 
-        $lineIdx = 0
-        foreach ($r in $runspaces) {
-            [Console]::SetCursorPosition(0, $cursorTop + $lineIdx)
-            $state = $statusTable[$r.Name]
-            $label = $r.Name.PadRight(28)
+        foreach ($name in $toolOrder) {
+            $state = $statusTable[$name]
 
-            switch ($state) {
-                "queued"      { Write-Host ("  [ ] $label  waiting...   ").PadRight(60) -ForegroundColor DarkGray  }
-                "downloading" { Write-Host ("  $spin  $label  downloading...").PadRight(60) -ForegroundColor Yellow    }
-                "done"        { Write-Host ("  [+] $label  done         ").PadRight(60) -ForegroundColor Green     }
-                "failed"      { Write-Host ("  [X] $label  FAILED       ").PadRight(60) -ForegroundColor Red       }
+            # Only rewrite the line if something changed (or it's still spinning)
+            if ($state -eq "downloading" -or $state -ne $prevState[$name]) {
+                $prevState[$name] = $state
+                $label = $name.PadRight(28)
+
+                [Console]::SetCursorPosition(0, $lineMap[$name])
+
+                switch ($state) {
+                    "queued"      {
+                        Write-Host ("  [ ] $label  waiting...   ").PadRight(65) -ForegroundColor DarkGray
+                    }
+                    "downloading" {
+                        Write-Host ("  $spin  $label  downloading...").PadRight(65) -ForegroundColor Yellow
+                    }
+                    "done"        {
+                        Write-Host ("  [+] $label  done         ").PadRight(65) -ForegroundColor Green
+                    }
+                    "failed"      {
+                        Write-Host ("  [X] $label  FAILED       ").PadRight(65) -ForegroundColor Red
+                    }
+                }
             }
-            $lineIdx++
         }
+
+        # Restore cursor below the block so we don't jump the terminal
+        [Console]::SetCursorPosition(0, $savRow)
 
         $pending = @($statusTable.Values | Where-Object { $_ -eq "queued" -or $_ -eq "downloading" })
 
     } while ($pending.Count -gt 0)
 
-    [Console]::SetCursorPosition(0, $cursorTop + $runspaces.Count)
+    # Move cursor to after the last tool line
+    [Console]::SetCursorPosition(0, ($lineMap[$toolOrder[-1]] + 1))
 
-    # Clean up runspaces
+    # Clean up
     foreach ($r in $runspaces) {
         try { $r.Pipe.EndInvoke($r.Handle) } catch {}
         $r.Pipe.Dispose()
@@ -233,7 +270,7 @@ function Download-Tools-Parallel {
     Write-Host "[$CategoryName] $success/$total downloaded successfully" -ForegroundColor $color
 }
 
-# Single sequential download (used for the optional .NET SDK)
+# Single sequential download (for the optional .NET SDK)
 function Download-File {
     param(
         [string]$Url,
@@ -246,7 +283,7 @@ function Download-File {
         Write-Host "  [~] Downloading $ToolName..." -NoNewline
 
         $wc = New-Object System.Net.WebClient
-        $wc.Headers.Add("User-Agent", "Mozilla/5.0")
+        $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
         $wc.DownloadFile($Url, $outputPath)
 
         if ($FileName -like "*.zip") {
@@ -266,6 +303,10 @@ function Download-File {
 }
 
 # ─── Tool definitions ──────────────────────────────────────────────────────────
+#
+#  HxD     -> https://mh-nexus.de/downloads/HxDSetup.zip          (official, confirmed)
+#  BinText -> McAfee/Foundstone b2b CDN bintext303.zip             (official mirror)
+#  FTK     -> Exterro public CDN 4.7.3.81                          (official build)
 
 $zimmermanTools = @(
     @{ Name = "bstrings";         Url = "https://download.ericzimmermanstools.com/net9/bstrings.zip";         File = "bstrings.zip" },
@@ -283,15 +324,15 @@ $spokwnTools = @(
 $otherTools = @(
     @{ Name = "Everything Search"; Url = "https://www.voidtools.com/Everything-1.4.1.1032.x64-Setup.exe";                                   File = "Everything-1.4.1.1032.x64-Setup.exe" },
     @{ Name = "Hayabusa";          Url = "https://github.com/Yamato-Security/hayabusa/releases/download/v3.8.0/hayabusa-3.8.0-win-x64.zip"; File = "hayabusa-3.8.0-win-x64.zip" },
-    @{ Name = "HxD Hex Editor";    Url = "https://mh-nexus.de/downloads/HxDSetupEN.zip";                                                     File = "HxDSetupEN.zip" },
-    @{ Name = "BinText";           Url = "https://web.archive.org/web/2024/https://www.mcafee.com/hk/downloads/free-tools/bintext.aspx";     File = "BinText.zip" },
-    @{ Name = "FTK Imager";        Url = "https://accessdata-ftk-imager.software.informer.com/3.1/";                                         File = "FTK_Imager_Setup.exe" }
+    @{ Name = "HxD Hex Editor";    Url = "https://mh-nexus.de/downloads/HxDSetup.zip";                                                      File = "HxDSetup.zip" },
+    @{ Name = "BinText";           Url = "http://b2b-download.mcafee.com/products/tools/foundstone/bintext303.zip";                          File = "bintext303.zip" },
+    @{ Name = "FTK Imager";        Url = "https://d1kpmuwb7gvu1i.cloudfront.net/FTK-Imager/4.7.3.81/Exterro_FTK_Imager_(x64)-4.7.3.81.exe"; File = "FTK_Imager_4.7.3.81.exe" }
 )
 
 # ─── Menu ──────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
-Write-Host "              Meow Fileless Downloader v1.1                " -ForegroundColor Cyan
+Write-Host "              Meow Fileless Downloader v1.2                " -ForegroundColor Cyan
 Write-Host "              Tool drop folder : $DownloadPath             " -ForegroundColor DarkCyan
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
 Write-Host ""
@@ -302,7 +343,6 @@ $installAll = $installAllResponse -match '^[Yy]'
 if ($installAll) {
     Write-Host "`n[+] Launching all downloads simultaneously..." -ForegroundColor Green
 
-    # Merge everything into one wave — maximum parallelism
     $allTools = $zimmermanTools + $nirsoftTools + $spokwnTools + $otherTools
     Download-Tools-Parallel -Tools $allTools -CategoryName "All"
 
@@ -316,8 +356,8 @@ if ($installAll) {
 } else {
     Write-Host "`n[*] Select categories to download:" -ForegroundColor Yellow
 
-    $selected        = @()
-    $needDotNet      = $false
+    $selected   = @()
+    $needDotNet = $false
 
     $response = Read-Host "`nDownload Zimmerman's tools? (bstrings, TimelineExplorer) (Y/N)"
     if ($response -match '^[Yy]') {
