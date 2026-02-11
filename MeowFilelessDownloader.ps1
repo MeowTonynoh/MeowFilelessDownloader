@@ -359,66 +359,6 @@ if ($runChecker -match '^[Yy]') {
         Write-Host "  Note: PowerShell history may be disabled or never used" -ForegroundColor Gray
     }
 
-    # SUSPICIOUS POWERSHELL COMMANDS
-    Write-Host "`nSUSPICIOUS POWERSHELL COMMANDS" -ForegroundColor Cyan
-    
-    $suspiciousPatterns = @(
-        "invoke-", "iex", "invoke-expression", "downloadstring",
-        "downloadfile", "webclient", "bits", "bitstransfer",
-        "curl", "wget", "powershell -enc", "frombase64string",
-        "new-object", "start-process", "invoke-webrequest",
-        "invoke-restmethod"
-    )
-
-    try {
-        $bootTime = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime
-        
-        $suspiciousCommands = @()
-        $channels = @("Windows PowerShell", "Microsoft-Windows-PowerShell/Operational")
-        
-        foreach ($channel in $channels) {
-            try {
-                $events = Get-WinEvent -LogName $channel -ErrorAction SilentlyContinue | 
-                    Where-Object { $_.TimeCreated -gt $bootTime } |
-                    Select-Object -First 100
-
-                foreach ($event in $events) {
-                    $message = $event.Message
-                    if ($message) {
-                        $lowerMessage = $message.ToLower()
-                        foreach ($pattern in $suspiciousPatterns) {
-                            if ($lowerMessage -match $pattern) {
-                                if ($suspiciousCommands -notcontains $message) {
-                                    $suspiciousCommands += $message
-                                }
-                                break
-                            }
-                        }
-                    }
-                }
-            } catch {}
-        }
-
-        if ($suspiciousCommands.Count -gt 0) {
-            Write-Host "  Found $($suspiciousCommands.Count) suspicious commands since last boot:" -ForegroundColor Yellow
-            $counter = 1
-            foreach ($cmd in $suspiciousCommands | Select-Object -First 5) {
-                Write-Host "`n  [#$counter] " -NoNewline -ForegroundColor White
-                $preview = $cmd.Substring(0, [Math]::Min(150, $cmd.Length))
-                if ($cmd.Length -gt 150) { $preview += "..." }
-                Write-Host $preview -ForegroundColor Gray
-                $counter++
-            }
-            if ($suspiciousCommands.Count -gt 5) {
-                Write-Host "`n  ... and $($suspiciousCommands.Count - 5) more" -ForegroundColor Gray
-            }
-        } else {
-            Write-Host "  No suspicious commands found since last boot" -ForegroundColor Green
-        }
-    } catch {
-        Write-Host "  Unable to check for suspicious commands" -ForegroundColor Red
-    }
-
     Write-Host ""
     Write-Host "══════════════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
     Write-Host ""
