@@ -210,11 +210,10 @@ $spokwnTools = @(
 )
 
 $otherTools = @(
-    @{ Name = "FTK Imager";        Url = "https://d1kpmuwb7gvu1i.cloudfront.net/AccessData_FTK_Imager_4.7.1.exe"; File = "AccessData_FTK_Imager_4.7.1.exe"; Referer = "" },
     @{ Name = "Everything Search"; Url = "https://www.voidtools.com/Everything-1.4.1.1032.x64-Setup.exe"; File = "Everything-1.4.1.1032.x64-Setup.exe"; Referer = "" },
     @{ Name = "Hayabusa";          Url = "https://github.com/Yamato-Security/hayabusa/releases/download/v3.8.0/hayabusa-3.8.0-win-x64.zip"; File = "hayabusa-3.8.0-win-x64.zip"; Referer = "" },
     @{ Name = "HxD Hex Editor";    Url = "https://mh-nexus.de/downloads/HxDSetup.zip"; File = "HxDSetup.zip"; Referer = "" },
-    @{ Name = "BinText";           Url = "https://the.earth.li/~sgtatham/putty/0.82/w64/putty.zip"; File = "bintext303.zip"; Referer = "" }
+    @{ Name = "BinText";           Url = "https://www.portablefreeware.com/index.php?id=2506"; File = "bintext.zip"; Referer = "" }
 )
 
 Write-Host ""
@@ -251,7 +250,7 @@ if ($installAll) {
     $r = Read-Host "`nDownload Spokwn's tools? (KernelLiveDumpTool) (Y/N)"
     if ($r -match '^[Yy]') { $selected += $spokwnTools }
 
-    $r = Read-Host "`nDownload other tools? (FTK Imager, Everything, Hayabusa, HxD) (Y/N)"
+    $r = Read-Host "`nDownload other tools? (Everything, Hayabusa, HxD, BinText) (Y/N)"
     if ($r -match '^[Yy]') { $selected += $otherTools }
 
     if ($selected.Count -gt 0) {
