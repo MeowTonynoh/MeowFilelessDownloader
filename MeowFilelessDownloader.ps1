@@ -283,7 +283,7 @@ $runChecker = Read-Host "Run FileLess System Checker? (Y/N)"
 if ($runChecker -match '^[Yy]') {
     Write-Host ""
     Write-Host "══════════════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
-    Write-Host "                         FILELESS SYSTEM CHECKER                              " -ForegroundColor Magenta
+    Write-Host "                         FILELESS SYSTEM CHECKER                              " -ForegroundColor Yellow
     Write-Host "══════════════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
     Write-Host ""
 
@@ -368,3 +368,4 @@ if ($runChecker -match '^[Yy]') {
 Write-Host ""
 Write-Host "[+] Dm Me On Discord @tonyboy90_ if you got some shit to add." -ForegroundColor White
 Write-Host ""
+
