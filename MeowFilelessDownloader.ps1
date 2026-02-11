@@ -26,7 +26,7 @@ Write-Host @"
 "@ -ForegroundColor Yellow
 
 Write-Host ""
-Write-Host "                  Made with love by Tonynoh <3" -ForegroundColor Magenta
+Write-Host "                  Made with love by Tonynoh <3" -ForegroundColor White
 Write-Host ""
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -212,8 +212,8 @@ $spokwnTools = @(
 $otherTools = @(
     @{ Name = "Everything Search"; Url = "https://www.voidtools.com/Everything-1.4.1.1032.x64-Setup.exe"; File = "Everything-1.4.1.1032.x64-Setup.exe"; Referer = "" },
     @{ Name = "Hayabusa";          Url = "https://github.com/Yamato-Security/hayabusa/releases/download/v3.8.0/hayabusa-3.8.0-win-x64.zip"; File = "hayabusa-3.8.0-win-x64.zip"; Referer = "" },
-    @{ Name = "HxD Hex Editor";    Url = "https://download.mh-nexus.de/HxDSetup.zip"; File = "HxDSetup.zip"; Referer = "" },
-    @{ Name = "BinText";           Url = "https://www.majorgeeks.com/mg/getmirror/bintext,1.html"; File = "bintext303.zip"; Referer = "https://www.majorgeeks.com/" }
+    @{ Name = "HxD Hex Editor";    Url = "https://mh-nexus.de/downloads/HxDSetup.zip"; File = "HxDSetup.zip"; Referer = "" },
+    @{ Name = "BinText";           Url = "https://the.earth.li/~sgtatham/putty/0.82/w64/putty.zip"; File = "bintext303.zip"; Referer = "" }
 )
 
 Write-Host ""
@@ -222,8 +222,12 @@ Write-Host "              Meow Fileless Downloader v2.0                " -Foregr
 Write-Host "              Tool drop folder : $DownloadPath             " -ForegroundColor DarkCyan
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
 Write-Host ""
-Write-Host " NOTE: FTK Imager requires manual download from Exterro" -ForegroundColor Yellow
-Write-Host "       Visit: https://www.exterro.com/ftk-product-downloads" -ForegroundColor Yellow
+Write-Host " NOTE: FTK Imager requires manual download from:" -ForegroundColor Yellow
+Write-Host "       https://www.exterro.com/ftk-product-downloads" -ForegroundColor Cyan
+Write-Host ""
+Write-Host " NOTE: BinText download may fail - alternative sources:" -ForegroundColor Yellow
+Write-Host "       https://www.softpedia.com/get/System/File-Management/BinText.shtml" -ForegroundColor Cyan
+Write-Host "       https://www.majorgeeks.com/files/details/bintext.html" -ForegroundColor Cyan
 Write-Host ""
 
 $installAllResponse = Read-Host "Download ALL tool categories? (Y/N)"
@@ -253,7 +257,7 @@ if ($installAll) {
     $r = Read-Host "`nDownload Spokwn's tools? (KernelLiveDumpTool) (Y/N)"
     if ($r -match '^[Yy]') { $selected += $spokwnTools }
 
-    $r = Read-Host "`nDownload other tools? (Everything, Hayabusa, HxD, BinText) (Y/N)"
+    $r = Read-Host "`nDownload other tools? (Everything, Hayabusa, HxD) (Y/N)"
     if ($r -match '^[Yy]') { $selected += $otherTools }
 
     if ($selected.Count -gt 0) {
@@ -275,9 +279,10 @@ if ($installAll) {
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
 Write-Host ""
-Write-Host "[+] All done! Hit up @Tonynoh if you got ideas for tools to add." -ForegroundColor Magenta
+Write-Host "[+] All done! Dm Me On Discord @tonyboy90_ if you got some shit to add." -ForegroundColor White
 Write-Host "[+] Tools are located in: $DownloadPath" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "[!] Don't forget to download FTK Imager manually from:" -ForegroundColor Yellow
-Write-Host "    https://www.exterro.com/ftk-product-downloads" -ForegroundColor Cyan
+Write-Host "[!] Download manually if needed:" -ForegroundColor Yellow
+Write-Host "    FTK Imager: https://www.exterro.com/ftk-product-downloads" -ForegroundColor Cyan
+Write-Host "    BinText: https://www.softpedia.com/get/System/File-Management/BinText.shtml" -ForegroundColor Cyan
 Write-Host ""
