@@ -1,9 +1,9 @@
 Write-Host @"
-███╗   ███╗███████╗ ██████╗ ██╗    ██╗      
-████╗ ████║██╔════╝██╔═══██╗██║    ██║        
+███╗   ███╗███████╗ ██████╗ ██╗    ██╗        
+████╗ ████║██╔════╝██╔═══██╗██║    ██║         
 ██╔████╔██║█████╗  ██║   ██║██║ █╗ ██║        
-██║╚██╔╝██║██╔══╝  ██║   ██║██║███╗██║       
-██║ ╚═╝ ██║███████╗╚██████╔╝╚███╔███╔╝    
+██║╚██╔╝██║██╔══╝  ██║   ██║██║███╗██║          
+██║ ╚═╝ ██║███████╗╚██████╔╝╚███╔███╔╝   
 ╚═╝     ╚═╝╚══════╝ ╚═════╝  ╚══╝╚══╝    
 "@ -ForegroundColor Magenta
 
@@ -35,18 +35,13 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
     Write-Host "[!] This script requires Administrator privileges." -ForegroundColor Yellow
     Write-Host "[*] Restarting as Administrator..." -ForegroundColor Yellow
 
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi           = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName  = "PowerShell"
     $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`""
     $psi.Verb      = "RunAs"
 
-    try {
-        [System.Diagnostics.Process]::Start($psi) | Out-Null
-        exit
-    }
-    catch {
-        Write-Host "[-] Could not elevate. Run the script as Administrator manually." -ForegroundColor Red
-    }
+    try   { [System.Diagnostics.Process]::Start($psi) | Out-Null; exit }
+    catch { Write-Host "[-] Could not elevate. Run the script as Administrator manually." -ForegroundColor Red }
 }
 
 # ─── Output folder ─────────────────────────────────────────────────────────────
@@ -61,82 +56,117 @@ function Add-DefenderExclusion {
     Write-Host "[*] Adding Windows Defender exclusion for $DownloadPath" -NoNewline
 
     $success = $false
-
     try {
         if (Get-Command Get-MpPreference -ErrorAction SilentlyContinue) {
-            $existingExclusions = (Get-MpPreference -ErrorAction Stop).ExclusionPath
-            if ($existingExclusions -notcontains $DownloadPath) {
+            $exc = (Get-MpPreference -ErrorAction Stop).ExclusionPath
+            if ($exc -notcontains $DownloadPath) {
                 Add-MpPreference -ExclusionPath $DownloadPath -ErrorAction Stop
             }
             Write-Host " [OK]" -ForegroundColor Green
             $success = $true
         }
-    }
-    catch {}
+    } catch {}
 
     if (-not $success) {
         try {
-            $regPath = "HKLM:\SOFTWARE\Microsoft\Windows Defender\Exclusions\Paths"
-            if (Test-Path $regPath) {
-                $existingValue = Get-ItemProperty -Path $regPath -Name $DownloadPath -ErrorAction SilentlyContinue
-                if (-not $existingValue) {
-                    New-ItemProperty -Path $regPath -Name $DownloadPath -Value 0 -PropertyType DWORD -Force -ErrorAction Stop | Out-Null
+            $rp = "HKLM:\SOFTWARE\Microsoft\Windows Defender\Exclusions\Paths"
+            if (Test-Path $rp) {
+                if (-not (Get-ItemProperty -Path $rp -Name $DownloadPath -ErrorAction SilentlyContinue)) {
+                    New-ItemProperty -Path $rp -Name $DownloadPath -Value 0 -PropertyType DWORD -Force -ErrorAction Stop | Out-Null
                 }
                 Write-Host " [OK]" -ForegroundColor Green
                 $success = $true
             }
-        }
-        catch {}
+        } catch {}
     }
 
-    if (-not $success) {
-        try {
-            $namespace = "root\Microsoft\Windows\Defender"
-            if (Get-WmiObject -Namespace $namespace -List -ErrorAction SilentlyContinue) {
-                $defender = Get-WmiObject -Namespace $namespace -Class "MSFT_MpPreference" -ErrorAction Stop
-                $defender.AddExclusionPath($DownloadPath)
-                Write-Host " [OK]" -ForegroundColor Green
-                $success = $true
-            }
-        }
-        catch {}
-    }
-
-    if (-not $success) {
-        Write-Host " [FAILED]" -ForegroundColor Red
-    }
-
+    if (-not $success) { Write-Host " [FAILED]" -ForegroundColor Red }
     return $success
 }
 
 $exclusionAdded = Add-DefenderExclusion
-
 if (-not $exclusionAdded) {
     Write-Host "`n[!] Could not add automatic antivirus exclusion." -ForegroundColor Yellow
     Write-Host "[!] You might be running a 3rd party AV -- some files could get deleted." -ForegroundColor Yellow
     Start-Sleep -Seconds 3
 }
 
+# ─── Core download function ────────────────────────────────────────────────────
+# Uses System.Net.Http.HttpClient which:
+#   - Follows all HTTP redirects automatically (crucial for GitHub, NirSoft)
+#   - Lets us set any headers we need (Referer for NirSoft, User-Agent for all)
+#   - Streams directly to disk without loading into RAM
+
+Add-Type -AssemblyName System.Net.Http
+
+function Invoke-Download {
+    param(
+        [string]$Url,
+        [string]$OutPath,
+        [string]$Referer = ""
+    )
+
+    $handler                        = New-Object System.Net.Http.HttpClientHandler
+    $handler.AllowAutoRedirect      = $true
+    $handler.MaxAutomaticRedirections = 10
+
+    $client = New-Object System.Net.Http.HttpClient($handler)
+    $client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36")
+    if ($Referer) {
+        $client.DefaultRequestHeaders.Add("Referer", $Referer)
+    }
+
+    try {
+        $response = $client.GetAsync($Url).GetAwaiter().GetResult()
+        $response.EnsureSuccessStatusCode() | Out-Null
+
+        $stream   = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+        $fileStream = [System.IO.File]::Create($OutPath)
+        $stream.CopyTo($fileStream)
+        $fileStream.Close()
+        $stream.Close()
+    }
+    finally {
+        $client.Dispose()
+        $handler.Dispose()
+    }
+}
+
 # ─── Parallel download engine ──────────────────────────────────────────────────
-# Uses RunspacePool (real OS threads). A synchronized hashtable carries status
-# back to the main thread. The display loop only redraws a line when its state
-# actually changes, eliminating all cursor-jump flicker.
 
 $DownloadScript = {
-    param($Url, $FileName, $ToolName, $DownloadPath, $StatusTable)
+    param($Url, $FileName, $ToolName, $Referer, $DownloadPath, $StatusTable)
 
     $outputPath = Join-Path $DownloadPath $FileName
     $StatusTable[$ToolName] = "downloading"
 
     try {
-        $wc = New-Object System.Net.WebClient
-        $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-        $wc.DownloadFile($Url, $outputPath)
+        Add-Type -AssemblyName System.Net.Http
 
-        # Validate we got a real file (not an HTML error page)
-        if ((Get-Item $outputPath -ErrorAction SilentlyContinue).Length -lt 1024) {
-            throw "Downloaded file is too small -- likely an error page"
+        $handler                          = New-Object System.Net.Http.HttpClientHandler
+        $handler.AllowAutoRedirect        = $true
+        $handler.MaxAutomaticRedirections = 10
+
+        $client = New-Object System.Net.Http.HttpClient($handler)
+        $client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36")
+        if ($Referer) {
+            $client.DefaultRequestHeaders.Add("Referer", $Referer)
         }
+
+        $response = $client.GetAsync($Url).GetAwaiter().GetResult()
+        $response.EnsureSuccessStatusCode() | Out-Null
+
+        $stream     = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+        $fileStream = [System.IO.File]::Create($outputPath)
+        $stream.CopyTo($fileStream)
+        $fileStream.Close()
+        $stream.Close()
+        $client.Dispose()
+        $handler.Dispose()
+
+        # Sanity check: make sure we got an actual file, not an HTML error page
+        $size = (Get-Item $outputPath -ErrorAction SilentlyContinue).Length
+        if ($size -lt 2048) { throw "File too small ($size bytes) -- likely an error page" }
 
         if ($FileName -like "*.zip") {
             $extractPath = Join-Path $DownloadPath ($FileName -replace '\.zip$', '')
@@ -148,9 +178,8 @@ $DownloadScript = {
         $StatusTable[$ToolName] = "done"
     }
     catch {
-        # Clean up partial/invalid file
         if (Test-Path $outputPath) { Remove-Item $outputPath -Force -ErrorAction SilentlyContinue }
-        $StatusTable[$ToolName] = "failed"
+        $StatusTable[$ToolName] = "failed:$($_.Exception.Message)"
     }
 }
 
@@ -163,18 +192,16 @@ function Download-Tools-Parallel {
     Write-Host "`n[*] Downloading $CategoryName tools in parallel..." -ForegroundColor Cyan
     Write-Host ""
 
-    # Shared thread-safe hashtable
-    $statusTable  = [hashtable]::Synchronized(@{})
-    $prevState    = @{}
-    $toolOrder    = @()
+    $statusTable = [hashtable]::Synchronized(@{})
+    $prevState   = @{}
+    $toolOrder   = @()
 
     foreach ($tool in $Tools) {
         $statusTable[$tool.Name] = "queued"
-        $prevState[$tool.Name]   = ""        # force first draw
+        $prevState[$tool.Name]   = ""
         $toolOrder += $tool.Name
     }
 
-    # Launch all runspaces simultaneously
     $maxThreads = [Math]::Min($Tools.Count, 16)
     $pool       = [RunspaceFactory]::CreateRunspacePool(1, $maxThreads)
     $pool.Open()
@@ -187,6 +214,7 @@ function Download-Tools-Parallel {
         [void]$ps.AddArgument($tool.Url)
         [void]$ps.AddArgument($tool.File)
         [void]$ps.AddArgument($tool.Name)
+        [void]$ps.AddArgument($(if ($tool.Referer) { $tool.Referer } else { "" }))
         [void]$ps.AddArgument($DownloadPath)
         [void]$ps.AddArgument($statusTable)
 
@@ -198,15 +226,10 @@ function Download-Tools-Parallel {
     }
 
     # ── Flicker-free live display ──────────────────────────────────────────────
-    # Each tool gets a fixed line. We record the cursor row for each tool on the
-    # first pass, then only jump back to that specific row when the state changes.
-    # This avoids the "whole block redraw" that causes visible flicker/jumping.
+    $spinFrames = @("|", "/", "-", "\")
+    $spinIdx    = 0
+    $lineMap    = @{}
 
-    $lineMap     = @{}   # tool name -> console row
-    $spinFrames  = @("|", "/", "-", "\")
-    $spinIdx     = 0
-
-    # Initial render — print every tool on its own line and record the row
     foreach ($name in $toolOrder) {
         $lineMap[$name] = [Console]::CursorTop
         Write-Host ("  [ ] " + $name.PadRight(28) + "  waiting...").PadRight(65) -ForegroundColor DarkGray
@@ -214,48 +237,32 @@ function Download-Tools-Parallel {
 
     do {
         Start-Sleep -Milliseconds 120
-        $spin    = $spinFrames[$spinIdx % 4]; $spinIdx++
-        $savRow  = [Console]::CursorTop
-        $savCol  = [Console]::CursorLeft
+        $spin = $spinFrames[$spinIdx % 4]; $spinIdx++
 
         foreach ($name in $toolOrder) {
             $state = $statusTable[$name]
+            $stateKey = if ($state -like "failed:*") { "failed" } else { $state }
 
-            # Only rewrite the line if something changed (or it's still spinning)
-            if ($state -eq "downloading" -or $state -ne $prevState[$name]) {
-                $prevState[$name] = $state
+            if ($stateKey -eq "downloading" -or $stateKey -ne $prevState[$name]) {
+                $prevState[$name] = $stateKey
                 $label = $name.PadRight(28)
 
                 [Console]::SetCursorPosition(0, $lineMap[$name])
-
-                switch ($state) {
-                    "queued"      {
-                        Write-Host ("  [ ] $label  waiting...   ").PadRight(65) -ForegroundColor DarkGray
-                    }
-                    "downloading" {
-                        Write-Host ("  $spin  $label  downloading...").PadRight(65) -ForegroundColor Yellow
-                    }
-                    "done"        {
-                        Write-Host ("  [+] $label  done         ").PadRight(65) -ForegroundColor Green
-                    }
-                    "failed"      {
-                        Write-Host ("  [X] $label  FAILED       ").PadRight(65) -ForegroundColor Red
-                    }
+                switch ($stateKey) {
+                    "queued"      { Write-Host ("  [ ] $label  waiting...   ").PadRight(65) -ForegroundColor DarkGray }
+                    "downloading" { Write-Host ("  $spin  $label  downloading...").PadRight(65) -ForegroundColor Yellow  }
+                    "done"        { Write-Host ("  [+] $label  done         ").PadRight(65) -ForegroundColor Green    }
+                    "failed"      { Write-Host ("  [X] $label  FAILED       ").PadRight(65) -ForegroundColor Red      }
                 }
             }
         }
 
-        # Restore cursor below the block so we don't jump the terminal
-        [Console]::SetCursorPosition(0, $savRow)
+        [Console]::SetCursorPosition(0, ($lineMap[$toolOrder[-1]] + 1))
 
         $pending = @($statusTable.Values | Where-Object { $_ -eq "queued" -or $_ -eq "downloading" })
 
     } while ($pending.Count -gt 0)
 
-    # Move cursor to after the last tool line
-    [Console]::SetCursorPosition(0, ($lineMap[$toolOrder[-1]] + 1))
-
-    # Clean up
     foreach ($r in $runspaces) {
         try { $r.Pipe.EndInvoke($r.Handle) } catch {}
         $r.Pipe.Dispose()
@@ -270,21 +277,13 @@ function Download-Tools-Parallel {
     Write-Host "[$CategoryName] $success/$total downloaded successfully" -ForegroundColor $color
 }
 
-# Single sequential download (for the optional .NET SDK)
 function Download-File {
-    param(
-        [string]$Url,
-        [string]$FileName,
-        [string]$ToolName
-    )
+    param([string]$Url, [string]$FileName, [string]$ToolName, [string]$Referer = "")
 
     try {
         $outputPath = Join-Path $DownloadPath $FileName
         Write-Host "  [~] Downloading $ToolName..." -NoNewline
-
-        $wc = New-Object System.Net.WebClient
-        $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-        $wc.DownloadFile($Url, $outputPath)
+        Invoke-Download -Url $Url -OutPath $outputPath -Referer $Referer
 
         if ($FileName -like "*.zip") {
             $extractPath = Join-Path $DownloadPath ($FileName -replace '\.zip$', '')
@@ -297,42 +296,45 @@ function Download-File {
         return $true
     }
     catch {
-        Write-Host " [FAILED]" -ForegroundColor Red
+        Write-Host " [FAILED] -- $_" -ForegroundColor Red
         return $false
     }
 }
 
 # ─── Tool definitions ──────────────────────────────────────────────────────────
 #
-#  HxD     -> https://mh-nexus.de/downloads/HxDSetup.zip          (official, confirmed)
-#  BinText -> McAfee/Foundstone b2b CDN bintext303.zip             (official mirror)
-#  FTK     -> Exterro public CDN 4.7.3.81                          (official build)
+#  Each entry can have an optional "Referer" field for sites that check it.
+#
+#  NirSoft  -> requires Referer header matching their domain
+#  GitHub   -> multiple redirects, handled by HttpClient AllowAutoRedirect
+#  BinText  -> GitHub mirror (mfput/McAfee-Tools) - McAfee CDN is offline
+#  FTK      -> Exterro CloudFront direct link (confirmed from release notes PDF URL pattern)
 
 $zimmermanTools = @(
-    @{ Name = "bstrings";         Url = "https://download.ericzimmermanstools.com/net9/bstrings.zip";         File = "bstrings.zip" },
-    @{ Name = "TimelineExplorer"; Url = "https://download.ericzimmermanstools.com/net9/TimelineExplorer.zip"; File = "TimelineExplorer.zip" }
+    @{ Name = "bstrings";         Url = "https://download.ericzimmermanstools.com/net9/bstrings.zip";         File = "bstrings.zip";         Referer = "" },
+    @{ Name = "TimelineExplorer"; Url = "https://download.ericzimmermanstools.com/net9/TimelineExplorer.zip"; File = "TimelineExplorer.zip"; Referer = "" }
 )
 
 $nirsoftTools = @(
-    @{ Name = "FullEventLogView"; Url = "https://www.nirsoft.net/utils/fulleventlogview-x64.zip"; File = "fulleventlogview-x64.zip" }
+    @{ Name = "FullEventLogView"; Url = "https://www.nirsoft.net/utils/fulleventlogview-x64.zip"; File = "fulleventlogview-x64.zip"; Referer = "https://www.nirsoft.net/utils/full_event_log_view.html" }
 )
 
 $spokwnTools = @(
-    @{ Name = "KernelLiveDumpTool"; Url = "https://github.com/spokwn/KernelLiveDumpTool/releases/download/v1.1/KernelLiveDumpTool.exe"; File = "KernelLiveDumpTool.exe" }
+    @{ Name = "KernelLiveDumpTool"; Url = "https://github.com/spokwn/KernelLiveDumpTool/releases/download/v1.1/KernelLiveDumpTool.exe"; File = "KernelLiveDumpTool.exe"; Referer = "" }
 )
 
 $otherTools = @(
-    @{ Name = "Everything Search"; Url = "https://www.voidtools.com/Everything-1.4.1.1032.x64-Setup.exe";                                   File = "Everything-1.4.1.1032.x64-Setup.exe" },
-    @{ Name = "Hayabusa";          Url = "https://github.com/Yamato-Security/hayabusa/releases/download/v3.8.0/hayabusa-3.8.0-win-x64.zip"; File = "hayabusa-3.8.0-win-x64.zip" },
-    @{ Name = "HxD Hex Editor";    Url = "https://mh-nexus.de/downloads/HxDSetup.zip";                                                      File = "HxDSetup.zip" },
-    @{ Name = "BinText";           Url = "http://b2b-download.mcafee.com/products/tools/foundstone/bintext303.zip";                          File = "bintext303.zip" },
-    @{ Name = "FTK Imager";        Url = "https://d1kpmuwb7gvu1i.cloudfront.net/FTK-Imager/4.7.3.81/Exterro_FTK_Imager_(x64)-4.7.3.81.exe"; File = "FTK_Imager_4.7.3.81.exe" }
+    @{ Name = "Everything Search"; Url = "https://www.voidtools.com/Everything-1.4.1.1032.x64-Setup.exe";                                                         File = "Everything-1.4.1.1032.x64-Setup.exe";   Referer = "https://www.voidtools.com/downloads/" },
+    @{ Name = "Hayabusa";          Url = "https://github.com/Yamato-Security/hayabusa/releases/download/v3.8.0/hayabusa-3.8.0-win-x64.zip";                       File = "hayabusa-3.8.0-win-x64.zip";            Referer = "" },
+    @{ Name = "HxD Hex Editor";    Url = "https://mh-nexus.de/downloads/HxDSetup.zip";                                                                            File = "HxDSetup.zip";                          Referer = "https://mh-nexus.de/en/hxd/" },
+    @{ Name = "BinText";           Url = "https://github.com/mfput/McAfee-Tools/raw/main/bintext303.zip";                                                         File = "bintext303.zip";                        Referer = "" },
+    @{ Name = "FTK Imager";        Url = "https://d1kpmuwb7gvu1i.cloudfront.net/FTK-Imager/4.7.3.81/Exterro_FTK_Imager_%28x64%29-4.7.3.81.exe";                  File = "FTK_Imager_4.7.3.81.exe";               Referer = "https://www.exterro.com/ftk-product-downloads/ftk-imager-4-7-3-81" }
 )
 
 # ─── Menu ──────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
-Write-Host "              Meow Fileless Downloader v1.2                " -ForegroundColor Cyan
+Write-Host "              Meow Fileless Downloader v1.3                " -ForegroundColor Cyan
 Write-Host "              Tool drop folder : $DownloadPath             " -ForegroundColor DarkCyan
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
 Write-Host ""
@@ -342,37 +344,31 @@ $installAll = $installAllResponse -match '^[Yy]'
 
 if ($installAll) {
     Write-Host "`n[+] Launching all downloads simultaneously..." -ForegroundColor Green
-
     $allTools = $zimmermanTools + $nirsoftTools + $spokwnTools + $otherTools
     Download-Tools-Parallel -Tools $allTools -CategoryName "All"
 
     $runtimeResponse = Read-Host "`nInstall .NET 9 Runtime? (required for Zimmerman tools) (Y/N)"
     if ($runtimeResponse -match '^[Yy]') {
         Download-File -Url "https://builds.dotnet.microsoft.com/dotnet/Sdk/9.0.306/dotnet-sdk-9.0.306-win-x64.exe" `
-                      -FileName "dotnet-sdk-9.0.306-win-x64.exe" `
-                      -ToolName ".NET 9 SDK"
+                      -FileName "dotnet-sdk-9.0.306-win-x64.exe" -ToolName ".NET 9 SDK"
     }
 
 } else {
     Write-Host "`n[*] Select categories to download:" -ForegroundColor Yellow
-
     $selected   = @()
     $needDotNet = $false
 
-    $response = Read-Host "`nDownload Zimmerman's tools? (bstrings, TimelineExplorer) (Y/N)"
-    if ($response -match '^[Yy]') {
-        $selected   += $zimmermanTools
-        $needDotNet  = $true
-    }
+    $r = Read-Host "`nDownload Zimmerman's tools? (bstrings, TimelineExplorer) (Y/N)"
+    if ($r -match '^[Yy]') { $selected += $zimmermanTools; $needDotNet = $true }
 
-    $response = Read-Host "`nDownload Nirsoft tools? (FullEventLogView) (Y/N)"
-    if ($response -match '^[Yy]') { $selected += $nirsoftTools }
+    $r = Read-Host "`nDownload Nirsoft tools? (FullEventLogView) (Y/N)"
+    if ($r -match '^[Yy]') { $selected += $nirsoftTools }
 
-    $response = Read-Host "`nDownload Spokwn's tools? (KernelLiveDumpTool) (Y/N)"
-    if ($response -match '^[Yy]') { $selected += $spokwnTools }
+    $r = Read-Host "`nDownload Spokwn's tools? (KernelLiveDumpTool) (Y/N)"
+    if ($r -match '^[Yy]') { $selected += $spokwnTools }
 
-    $response = Read-Host "`nDownload other tools? (Everything, Hayabusa, HxD, BinText, FTK Imager) (Y/N)"
-    if ($response -match '^[Yy]') { $selected += $otherTools }
+    $r = Read-Host "`nDownload other tools? (Everything, Hayabusa, HxD, BinText, FTK Imager) (Y/N)"
+    if ($r -match '^[Yy]') { $selected += $otherTools }
 
     if ($selected.Count -gt 0) {
         Write-Host "`n[+] Launching $($selected.Count) download(s) simultaneously..." -ForegroundColor Green
@@ -382,11 +378,10 @@ if ($installAll) {
     }
 
     if ($needDotNet) {
-        $runtimeResponse = Read-Host "`nInstall .NET 9 Runtime? (required for Zimmerman tools) (Y/N)"
-        if ($runtimeResponse -match '^[Yy]') {
+        $rr = Read-Host "`nInstall .NET 9 Runtime? (required for Zimmerman tools) (Y/N)"
+        if ($rr -match '^[Yy]') {
             Download-File -Url "https://builds.dotnet.microsoft.com/dotnet/Sdk/9.0.306/dotnet-sdk-9.0.306-win-x64.exe" `
-                          -FileName "dotnet-sdk-9.0.306-win-x64.exe" `
-                          -ToolName ".NET 9 SDK"
+                          -FileName "dotnet-sdk-9.0.306-win-x64.exe" -ToolName ".NET 9 SDK"
         }
     }
 }
